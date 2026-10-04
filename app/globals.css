@@ -1,0 +1,722 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ==========================================================================
+   Design tokens — ported verbatim from the reference design.
+   Theme switching flips `data-theme` on <html>; every token below is a live
+   custom property so the whole UI re-themes without re-rendering.
+   ========================================================================== */
+:root {
+  --bg: #0b0d10;
+  --surface: #161a20;
+  --surface-2: #1c2029;
+  --border: #232830;
+  --text: #e7e9ee;
+  --text-muted: #8a919e;
+  --accent: #6366f1;
+  --accent-2: #8b5cf6;
+  --accent-soft: rgba(99, 102, 241, 0.12);
+  --code-bg: #0d1015;
+  --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+  --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+}
+
+[data-theme="light"] {
+  --bg: #ffffff;
+  --surface: #f5f6f8;
+  --surface-2: #eceef2;
+  --border: #e4e7ec;
+  --text: #14171c;
+  --text-muted: #6b7280;
+  --accent-soft: rgba(99, 102, 241, 0.08);
+  --code-bg: #f7f8fa;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--sans);
+  -webkit-font-smoothing: antialiased;
+  overflow: hidden;
+  transition: background 0.2s, color 0.2s;
+}
+
+/* ==========================================================================
+   App shell
+   ========================================================================== */
+.app {
+  display: flex;
+  flex-direction: column;
+  height: 100dvh;
+}
+
+/* ---------- Top bar ---------- */
+.header {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 18px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg);
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.logo {
+  width: 32px;
+  height: 32px;
+  border-radius: 9px;
+  flex-shrink: 0;
+  background: linear-gradient(135deg, var(--accent), var(--accent-2));
+  display: grid;
+  place-items: center;
+  color: #fff;
+}
+
+.logo svg {
+  width: 17px;
+  height: 17px;
+}
+
+.brand-name {
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.2;
+}
+
+.brand-sub {
+  font-size: 11px;
+  color: var(--text-muted);
+  line-height: 1.3;
+}
+
+.topbar-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.model-pill {
+  font-family: var(--mono);
+  font-size: 11.5px;
+  color: var(--text-muted);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  padding: 5px 11px;
+  border-radius: 999px;
+  white-space: nowrap;
+}
+
+.icon-btn {
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text-muted);
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+  transition: all 0.15s;
+  padding: 0;
+}
+
+.icon-btn:hover {
+  color: var(--text);
+  border-color: var(--accent);
+}
+
+.icon-btn svg {
+  width: 15px;
+  height: 15px;
+}
+
+/* ---------- Messages ---------- */
+.messages {
+  flex: 1;
+  overflow-y: auto;
+  scroll-behavior: smooth;
+  scrollbar-width: thin;
+  scrollbar-color: var(--border) transparent;
+}
+
+.messages::-webkit-scrollbar {
+  width: 10px;
+}
+
+.messages::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border-radius: 10px;
+  border: 3px solid var(--bg);
+}
+
+.messages-inner {
+  max-width: 780px;
+  margin: 0 auto;
+  padding: 28px 20px 32px;
+}
+
+.msg {
+  display: flex;
+  gap: 12px;
+  margin-bottom: 26px;
+  animation: fadeUp 0.28s ease both;
+}
+
+.msg.user {
+  flex-direction: row-reverse;
+}
+
+@keyframes fadeUp {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.avatar {
+  width: 30px;
+  height: 30px;
+  border-radius: 9px;
+  flex-shrink: 0;
+  display: grid;
+  place-items: center;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.msg.user .avatar {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  color: var(--text-muted);
+}
+
+.msg.assistant .avatar {
+  background: linear-gradient(135deg, var(--accent), var(--accent-2));
+  color: #fff;
+}
+
+.avatar svg {
+  width: 15px;
+  height: 15px;
+}
+
+.msg-body {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.msg.user .msg-body {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  border-top-right-radius: 5px;
+  padding: 10px 15px;
+  font-size: 15px;
+  line-height: 1.6;
+}
+
+.msg.assistant .msg-body {
+  flex: 1;
+  padding-top: 3px;
+}
+
+/* ---------- Prose ---------- */
+.prose {
+  font-size: 15px;
+  line-height: 1.72;
+  word-wrap: break-word;
+}
+
+.prose > *:first-child {
+  margin-top: 0;
+}
+
+.prose > *:last-child {
+  margin-bottom: 0;
+}
+
+.prose p {
+  margin: 0 0 13px;
+}
+
+.prose h1,
+.prose h2,
+.prose h3 {
+  margin: 20px 0 9px;
+  font-weight: 600;
+  line-height: 1.3;
+}
+
+.prose h1 {
+  font-size: 20px;
+}
+
+.prose h2 {
+  font-size: 17px;
+}
+
+.prose h3 {
+  font-size: 15px;
+}
+
+/* Tailwind's preflight strips list markers, so they are restored here to
+   match the reference rendering exactly. */
+.prose ul,
+.prose ol {
+  margin: 0 0 13px;
+  padding-left: 22px;
+}
+
+.prose ul {
+  list-style: disc;
+}
+
+.prose ol {
+  list-style: decimal;
+}
+
+.prose li {
+  margin-bottom: 5px;
+}
+
+.prose a {
+  color: var(--accent);
+  text-decoration: none;
+}
+
+.prose a:hover {
+  text-decoration: underline;
+}
+
+.prose blockquote {
+  margin: 0 0 13px;
+  padding: 2px 0 2px 14px;
+  border-left: 3px solid var(--accent);
+  color: var(--text-muted);
+  font-style: italic;
+}
+
+.prose code.inline {
+  font-family: var(--mono);
+  font-size: 0.87em;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  padding: 1.5px 5px;
+  border-radius: 5px;
+}
+
+/* ---------- Code blocks ---------- */
+.code-block {
+  margin: 13px 0;
+  border-radius: 12px;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  background: var(--code-bg);
+}
+
+.code-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 7px 12px;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  font-family: var(--mono);
+  font-size: 11.5px;
+  color: var(--text-muted);
+}
+
+.copy-btn {
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--text-muted);
+  font-family: inherit;
+  font-size: 11px;
+  padding: 3px 10px;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.copy-btn:hover {
+  color: var(--text);
+  border-color: var(--accent);
+}
+
+.copy-btn.copied {
+  color: #10b981;
+  border-color: #10b981;
+}
+
+.code-block pre {
+  margin: 0;
+  padding: 14px 16px;
+  overflow-x: auto;
+  scrollbar-width: thin;
+  scrollbar-color: var(--border) transparent;
+}
+
+.code-block pre::-webkit-scrollbar {
+  height: 8px;
+}
+
+.code-block pre::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border-radius: 8px;
+}
+
+.code-block code {
+  font-family: var(--mono);
+  font-size: 13px;
+  line-height: 1.62;
+  color: var(--text);
+  white-space: pre;
+}
+
+/* ---------- Typing ---------- */
+.typing {
+  display: flex;
+  gap: 5px;
+  padding: 8px 0;
+}
+
+.typing span {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--text-muted);
+  opacity: 0.4;
+  animation: bounce 1.25s infinite ease-in-out;
+}
+
+.typing span:nth-child(2) {
+  animation-delay: 0.16s;
+}
+
+.typing span:nth-child(3) {
+  animation-delay: 0.32s;
+}
+
+@keyframes bounce {
+  0%,
+  70%,
+  100% {
+    transform: translateY(0);
+    opacity: 0.4;
+  }
+  35% {
+    transform: translateY(-5px);
+    opacity: 1;
+  }
+}
+
+.cursor {
+  display: inline-block;
+  width: 7px;
+  height: 15px;
+  background: var(--accent);
+  vertical-align: -2px;
+  margin-left: 2px;
+  border-radius: 1px;
+  animation: blink 0.9s steps(2) infinite;
+}
+
+@keyframes blink {
+  0%,
+  50% {
+    opacity: 1;
+  }
+  51%,
+  100% {
+    opacity: 0;
+  }
+}
+
+/* ---------- Empty state ---------- */
+.empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 100%;
+  text-align: center;
+  padding: 40px 20px;
+}
+
+.empty-logo {
+  width: 58px;
+  height: 58px;
+  border-radius: 17px;
+  background: linear-gradient(135deg, var(--accent), var(--accent-2));
+  display: grid;
+  place-items: center;
+  color: #fff;
+  box-shadow: 0 10px 34px rgba(99, 102, 241, 0.35);
+}
+
+.empty-logo svg {
+  width: 28px;
+  height: 28px;
+}
+
+.empty h1 {
+  font-size: clamp(22px, 5vw, 30px);
+  font-weight: 650;
+  margin: 20px 0 8px;
+  letter-spacing: -0.4px;
+}
+
+.empty p {
+  color: var(--text-muted);
+  font-size: 14.5px;
+  margin: 0 0 30px;
+}
+
+.suggestions {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 10px;
+  width: 100%;
+  max-width: 580px;
+}
+
+.suggestion {
+  text-align: left;
+  padding: 14px 16px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 13px;
+  cursor: pointer;
+  color: var(--text);
+  font-family: inherit;
+  font-size: 13.5px;
+  line-height: 1.45;
+  transition: all 0.16s;
+}
+
+.suggestion:hover {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  transform: translateY(-1px);
+}
+
+.suggestion b {
+  display: block;
+  font-size: 13px;
+  margin-bottom: 3px;
+  font-weight: 600;
+}
+
+.suggestion span {
+  color: var(--text-muted);
+  font-size: 12.5px;
+}
+
+/* ---------- Composer ---------- */
+.footer {
+  flex-shrink: 0;
+  padding: 10px 20px 14px;
+  background: var(--bg);
+}
+
+.composer-inner {
+  max-width: 780px;
+  margin: 0 auto;
+}
+
+.composer {
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  padding: 7px 7px 7px 16px;
+  transition: border-color 0.16s, box-shadow 0.16s;
+}
+
+.composer:focus-within {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+
+.composer-input {
+  flex: 1;
+  min-width: 0;
+  background: transparent;
+  border: none;
+  outline: none;
+  resize: none;
+  color: var(--text);
+  font-family: inherit;
+  font-size: 15px;
+  line-height: 1.55;
+  padding: 8px 0;
+  max-height: 180px;
+}
+
+.composer-input::placeholder {
+  color: var(--text-muted);
+}
+
+.send-btn,
+.stop-btn {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+  border: none;
+  padding: 0;
+  transition: transform 0.12s, opacity 0.12s, background 0.15s;
+}
+
+.send-btn {
+  background: linear-gradient(135deg, var(--accent), var(--accent-2));
+  color: #fff;
+}
+
+.send-btn:disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
+}
+
+.send-btn:not(:disabled):hover {
+  transform: scale(1.06);
+}
+
+.stop-btn {
+  background: var(--surface-2);
+  color: var(--text);
+  border: 1px solid var(--border);
+}
+
+.stop-btn:hover {
+  border-color: var(--accent);
+}
+
+.hidden {
+  display: none !important;
+}
+
+.hint {
+  text-align: center;
+  font-size: 11.5px;
+  color: var(--text-muted);
+  margin-top: 9px;
+  user-select: none;
+}
+
+/* ---------- Composer watermark ---------- */
+/* Sits just left of the send button. Purely decorative: it never intercepts
+   pointer events and is non-selectable, so it cannot block typing or tapping. */
+.watermark {
+  font-family: var(--mono);
+  font-size: 10px;
+  line-height: 1;
+  color: var(--text-muted);
+  opacity: 0.25;
+  pointer-events: none;
+  user-select: none;
+  -webkit-user-select: none;
+  white-space: nowrap;
+  flex-shrink: 0;
+  align-self: center;
+  padding-right: 2px;
+}
+
+/* ---------- Scroll to bottom ---------- */
+.scroll-btn {
+  position: fixed;
+  bottom: 108px;
+  left: 50%;
+  transform: translateX(-50%) translateY(10px);
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  color: var(--text-muted);
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+  opacity: 0;
+  pointer-events: none;
+  transition: all 0.2s;
+  z-index: 10;
+  padding: 0;
+}
+
+.scroll-btn.show {
+  opacity: 1;
+  pointer-events: auto;
+  transform: translateX(-50%) translateY(0);
+}
+
+.scroll-btn svg {
+  width: 15px;
+  height: 15px;
+}
+
+/* ---------- Responsive ---------- */
+@media (max-width: 620px) {
+  .messages-inner {
+    padding: 20px 14px 24px;
+  }
+
+  .footer {
+    padding: 8px 12px 12px;
+  }
+
+  .suggestions {
+    grid-template-columns: 1fr;
+  }
+
+  .model-pill,
+  .brand-sub {
+    display: none;
+  }
+
+  .header {
+    padding: 10px 14px;
+  }
+}
+
+/* Respect users who ask for less motion. */
+@media (prefers-reduced-motion: reduce) {
+  .msg,
+  .typing span,
+  .cursor {
+    animation: none;
+  }
+
+  .messages {
+    scroll-behavior: auto;
+  }
+}
