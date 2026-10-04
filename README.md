@@ -137,6 +137,45 @@ types/
 
 ---
 
+## Dependency & security notes
+
+The dependency set is **pinned to exact versions** (no `^`/`~` ranges) and `package-lock.json`
+is committed, so `npm ci` produces a byte-reproducible tree on Vercel and locally.
+
+| Package | Version | Note |
+| --- | --- | --- |
+| `next` | `15.5.27` | Patched release line for **CVE-2025-66478** / CVE-2025-55182 |
+| `react` / `react-dom` | `19.2.8` | Aligned with Next 15.5 |
+| `ai` / `@ai-sdk/react` / `@ai-sdk/openai` | `4.3.19` / `1.2.12` / `1.3.24` | Unchanged — already current, no advisories |
+| `eslint` | `10.12.0` | Actively supported line (9.x is end-of-life) |
+| `typescript-eslint` | `8.71.0` | Supports ESLint 10 |
+| `eslint-plugin-react-hooks` | `7.1.1` | Supports ESLint 10 |
+| `@next/eslint-plugin-next` | `16.3.8` | Native flat config |
+
+### Why `eslint.config.mjs` is composed by hand
+
+ESLint 10 removed the legacy eslintrc mode. `eslint-config-next` still bundles
+`eslint-plugin-react`, `eslint-plugin-import` and `eslint-plugin-jsx-a11y`, and **none of those
+support ESLint 10 yet** — their latest releases still declare a `^9` peer range, and
+`eslint-plugin-react` throws at lint time under ESLint 10
+(`contextOrFilename.getFilename is not a function`).
+
+Rather than freeze the project on an end-of-life ESLint, the config composes the three plugins
+that *do* support ESLint 10 directly:
+
+- `@next/eslint-plugin-next` → `core-web-vitals` (native flat config)
+- `eslint-plugin-react-hooks` → `rules-of-hooks` + `exhaustive-deps`
+- `typescript-eslint` → `recommended`
+
+The React Hooks rule set is intentionally limited to those two classic rules — the same rules the
+project ran before. The newer compiler-oriented rules (`set-state-in-effect` and friends) are left
+off because this app legitimately uses the standard hydration-gate and localStorage-backed-theme
+patterns they flag.
+
+To go back to `eslint-config-next`, upgrade it once its bundled plugins add ESLint 10 support.
+
+---
+
 ## Security notes
 
 - The API key is read from `process.env` inside the route handler and is never included in any response body or client bundle.
