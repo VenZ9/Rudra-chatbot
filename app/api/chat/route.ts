@@ -1,6 +1,9 @@
 import { createOpenAI } from "@ai-sdk/openai";
-import { convertToCoreMessages, streamText } from "ai";
-import { resolveModel } from "@/lib/models";
+import { convertToCoreMessages, createDataStreamResponse, streamText } from "ai";
+import { BOTH_MODELS_FAILED_MESSAGE, friendlyError, isModelUnavailable, rawMessageOf, statusOf } from "@/lib/errors";
+import { pickAvailableModel } from "@/lib/model-availability";
+import { modelLabel } from "@/lib/models";
+import { resolveFallbacks, resolveModel } from "@/lib/models.server";
 import { resolveSystemPrompt } from "@/lib/system-prompt";
 
 /**
@@ -9,6 +12,15 @@ import { resolveSystemPrompt } from "@/lib/system-prompt";
  * The API key is read from process.env on the server only. It is never sent to
  * the browser, never embedded in the client bundle, and never echoed back in a
  * response body.
+ *
+ * ## Automatic model fallback
+ *
+ * Free OpenRouter model ids are retired without notice — the app's original
+ * default (`google/gemma-2-9b-it:free`) no longer exists, which is exactly how
+ * this broke once already. Before opening the stream the route asks OpenRouter
+ * whether the requested model still has a live endpoint, and moves down the
+ * fallback chain if it does not. The user is told through a
+ * `message_annotation` part, so the swap is visible in the chat, not silent.
  */
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -18,83 +30,8 @@ const REQUEST_TIMEOUT_MS = 45_000;
 const MAX_MESSAGES = 100;
 const MAX_MESSAGE_CHARS = 20_000;
 
-/** Maps a provider failure onto a short, human message for the chat UI. */
-function friendlyError(status: number | undefined, raw: string): string {
-  if (status === 401 || status === 403) {
-    return "The API key was rejected. Check that OPENROUTER_API_KEY is set correctly in your environment.";
-  }
-  if (status === 402) {
-    return "This model needs credits on your account. Try another free model from the header.";
-  }
-  if (status === 404) {
-    return "That model isn't available right now. Pick a different one from the header.";
-  }
-  if (status === 429) {
-    return "Rate limit reached — the free tier is busy. Wait a few seconds and try again, or switch models.";
-  }
-  if (status && status >= 500) {
-    return "The model provider had a server error. Please try again in a moment.";
-  }
-  return (
-    classifyByMessage(raw) ??
-    (raw || "Something went wrong while generating a response. Please try again.")
-  );
-}
-
 /**
- * The SDK retries failed calls and then throws a wrapper whose message reads
- * "Failed after N attempts. Last error: ...", which loses the status code. This
- * recovers the intent from the text so the user still gets a useful message.
- */
-function classifyByMessage(raw: string): string | null {
-  const t = raw.toLowerCase();
-  if (/rate limit|too many requests|\b429\b/.test(t)) {
-    return "Rate limit reached — the free tier is busy. Wait a few seconds and try again, or switch models.";
-  }
-  if (/unauthorized|invalid api key|no auth|\b401\b|\b403\b/.test(t)) {
-    return "The API key was rejected. Check that OPENROUTER_API_KEY is set correctly in your environment.";
-  }
-  if (/insufficient|credits|\b402\b/.test(t)) {
-    return "This model needs credits on your account. Try another free model from the header.";
-  }
-  if (/timed? ?out|timeout|aborted/.test(t)) {
-    return "The request timed out. The free model may be busy — please try again.";
-  }
-  if (/internal server error|bad gateway|service unavailable|\b50[0-9]\b/.test(t)) {
-    return "The model provider had a server error. Please try again in a moment.";
-  }
-  return null;
-}
-
-/** Pulls an HTTP status off whatever shape the provider threw. */
-function statusOf(error: unknown): number | undefined {
-  if (error && typeof error === "object") {
-    const e = error as {
-      statusCode?: unknown;
-      status?: unknown;
-      cause?: unknown;
-      lastError?: unknown;
-    };
-    if (typeof e.statusCode === "number") return e.statusCode;
-    if (typeof e.status === "number") return e.status;
-    // The retry wrapper nests the real failure here.
-    if (e.lastError) {
-      const nested = statusOf(e.lastError);
-      if (nested !== undefined) return nested;
-    }
-    if (e.cause) return statusOf(e.cause);
-  }
-  return undefined;
-}
-
-function rawMessageOf(error: unknown): string {
-  if (error instanceof Error && error.message) return error.message;
-  if (typeof error === "string") return error;
-  return "";
-}
-
-/**
- * Validates the incoming transcript. Returns a CoreMessage[] on success or an
+ * Validates the incoming transcript. Returns CoreMessage[] on success, or an
  * error string describing what was wrong.
  */
 function parseMessages(
@@ -159,21 +96,41 @@ export async function POST(req: Request) {
   }
 
   const baseURL = process.env.OPENROUTER_BASE_URL?.trim() || DEFAULT_BASE_URL;
-  const modelId = resolveModel(payload.model);
+  const requestedModel = resolveModel(payload.model);
   const system = resolveSystemPrompt(payload.system);
+
+  const attributionHeaders: Record<string, string> = {
+    ...(process.env.OPENROUTER_SITE_URL ? { "HTTP-Referer": process.env.OPENROUTER_SITE_URL } : {}),
+    ...(process.env.OPENROUTER_SITE_NAME ? { "X-Title": process.env.OPENROUTER_SITE_NAME } : {}),
+  };
 
   const openrouter = createOpenAI({
     baseURL,
     apiKey,
-    headers: {
-      ...(process.env.OPENROUTER_SITE_URL
-        ? { "HTTP-Referer": process.env.OPENROUTER_SITE_URL }
-        : {}),
-      ...(process.env.OPENROUTER_SITE_NAME
-        ? { "X-Title": process.env.OPENROUTER_SITE_NAME }
-        : {}),
-    },
+    headers: attributionHeaders,
   });
+
+  // Free models get retired upstream without notice. Probe first so a dead id
+  // moves to a working fallback instead of surfacing an error to the user.
+  const {
+    model: modelId,
+    fellBackFrom,
+    allUnavailable,
+  } = await pickAvailableModel(requestedModel, resolveFallbacks(requestedModel), {
+    baseURL,
+    apiKey,
+    headers: attributionHeaders,
+  });
+
+  // Every model in the chain is gone. Report it now: a provider failure arrives
+  // inside the stream as an error part, so failing here is the only chance to
+  // give the user one clear, accurate message.
+  if (allUnavailable) {
+    return new Response(BOTH_MODELS_FAILED_MESSAGE, {
+      status: 503,
+      headers: { "Content-Type": "text/plain; charset=utf-8" },
+    });
+  }
 
   // Abort if the client disconnects (Stop button) or the provider stalls.
   const abortSignal = AbortSignal.any([req.signal, AbortSignal.timeout(REQUEST_TIMEOUT_MS)]);
@@ -188,17 +145,46 @@ export async function POST(req: Request) {
       abortSignal,
     });
 
-    return result.toDataStreamResponse({
-      getErrorMessage: (error) => {
+    // A plain toDataStreamResponse() cannot carry extra data, so wrap the stream
+    // to emit the fallback notice alongside the tokens. The client reads it off
+    // the message's `annotations` and shows a small inline notice.
+    return createDataStreamResponse({
+      execute: (dataStream) => {
+        if (fellBackFrom) {
+          dataStream.writeMessageAnnotation({
+            type: "model-fallback",
+            from: modelLabel(fellBackFrom),
+            to: modelLabel(modelId),
+            message: `${modelLabel(fellBackFrom)} is no longer available on OpenRouter, so this reply is coming from ${modelLabel(modelId)} instead.`,
+          });
+        }
+        result.mergeIntoDataStream(dataStream);
+      },
+      onError: (error) => {
         const status = statusOf(error);
         if (status === undefined && error instanceof Error && error.name === "TimeoutError") {
           return "The request timed out. The free model may be busy — please try again.";
+        }
+        // We already swapped models once and the replacement failed the same way:
+        // say so plainly instead of blaming only the replacement.
+        if (fellBackFrom && isModelUnavailable(error, modelId)) {
+          return BOTH_MODELS_FAILED_MESSAGE;
         }
         return friendlyError(status, rawMessageOf(error));
       },
     });
   } catch (error) {
     const status = statusOf(error);
+
+    // Everything in the chain is down — say so plainly rather than leaking a
+    // raw provider message.
+    if (fellBackFrom) {
+      return new Response(BOTH_MODELS_FAILED_MESSAGE, {
+        status: 503,
+        headers: { "Content-Type": "text/plain; charset=utf-8" },
+      });
+    }
+
     return new Response(friendlyError(status, rawMessageOf(error)), {
       status: status && status >= 400 && status < 600 ? status : 500,
       headers: { "Content-Type": "text/plain; charset=utf-8" },

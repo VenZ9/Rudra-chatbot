@@ -8,7 +8,8 @@ import { Header } from "./Header";
 import { MessageList } from "./MessageList";
 import { DEFAULT_MODEL } from "@/lib/models";
 import { clearHistory, loadHistory, loadTheme, saveHistory, saveTheme } from "@/lib/storage";
-import type { ChatMessage, Theme } from "@/types";
+import type { ChatMessage, ModelFallbackNotice, Theme } from "@/types";
+import { isModelFallbackNotice } from "@/types";
 
 /** Narrows an AI SDK message down to what we persist. */
 function toStored(m: AIMessage): ChatMessage | null {
@@ -46,6 +47,10 @@ function ChatSession({
   const [input, setInput] = useState("");
   const messagesRef = useRef<AIMessage[]>([]);
 
+  // Set when the server had to move off the requested model because it was
+  // retired upstream. Cleared whenever the user picks a different model.
+  const [fallbackNotice, setFallbackNotice] = useState<ModelFallbackNotice | null>(null);
+
   const persist = useCallback(() => {
     const stored = messagesRef.current
       .map(toStored)
@@ -72,6 +77,26 @@ function ChatSession({
     messagesRef.current = messages;
     if (!isLoading) persist();
   }, [messages, isLoading, persist]);
+
+  // The route attaches a `model-fallback` annotation to the assistant message
+  // when it swaps models. Read it so the user is told why the reply isn't from
+  // the model they picked.
+  useEffect(() => {
+    for (let i = messages.length - 1; i >= 0; i -= 1) {
+      const anns = messages[i].annotations as unknown[] | undefined;
+      if (!anns?.length) continue;
+      const hit = anns.find(isModelFallbackNotice);
+      if (hit) {
+        setFallbackNotice(hit);
+        return;
+      }
+    }
+  }, [messages]);
+
+  // Choosing a different model invalidates any previous fallback notice.
+  useEffect(() => {
+    setFallbackNotice(null);
+  }, [model]);
 
   const submit = useCallback(
     (text?: string) => {
@@ -104,6 +129,7 @@ function ChatSession({
         isLoading={isLoading}
         error={error}
         onSuggestion={submit}
+        notice={fallbackNotice}
       />
 
       <Composer

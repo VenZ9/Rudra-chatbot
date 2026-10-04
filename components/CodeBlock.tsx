@@ -22,26 +22,44 @@ export function CodeBlock({ lang, code }: CodeBlockProps) {
 
   const copy = useCallback(async () => {
     if (timer.current) clearTimeout(timer.current);
+
+    /**
+     * Legacy fallback. Used when the async Clipboard API is unavailable OR its
+     * permission is denied — an unfocused window, a non-secure context, and
+     * headless browsers all reject `writeText`, so rejecting is just as
+     * important to handle as the API being missing.
+     */
+    const legacyCopy = () => {
+      const ta = document.createElement("textarea");
+      ta.value = code;
+      ta.setAttribute("readonly", "");
+      ta.style.position = "fixed";
+      ta.style.top = "-9999px";
+      ta.style.opacity = "0";
+      document.body.appendChild(ta);
+      ta.select();
+      let ok = false;
+      try {
+        ok = document.execCommand("copy");
+      } catch {
+        ok = false;
+      }
+      document.body.removeChild(ta);
+      return ok;
+    };
+
+    let ok = false;
     try {
       if (navigator.clipboard?.writeText) {
         await navigator.clipboard.writeText(code);
-      } else {
-        // Fallback for non-secure contexts where the Clipboard API is absent.
-        const ta = document.createElement("textarea");
-        ta.value = code;
-        ta.setAttribute("readonly", "");
-        ta.style.position = "fixed";
-        ta.style.opacity = "0";
-        document.body.appendChild(ta);
-        ta.select();
-        const ok = document.execCommand("copy");
-        document.body.removeChild(ta);
-        if (!ok) throw new Error("copy failed");
+        ok = true;
       }
-      setState("copied");
     } catch {
-      setState("failed");
+      ok = false;
     }
+    if (!ok) ok = legacyCopy();
+
+    setState(ok ? "copied" : "failed");
     timer.current = setTimeout(() => setState("idle"), 1600);
   }, [code]);
 
