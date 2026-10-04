@@ -20,25 +20,30 @@ function toStored(m: AIMessage): ChatMessage | null {
   };
 }
 
+interface ChatSessionProps {
+  model: string;
+  onModelChange: (model: string) => void;
+  theme: Theme;
+  onToggleTheme: () => void;
+  /** Clears storage and remounts the session. */
+  onClear: () => void;
+  initialMessages: AIMessage[];
+}
+
 /**
- * The chat application. Mounted only on the client so the persisted transcript
- * can be read from localStorage before `useChat` initialises — that keeps
- * `initialMessages` correct and avoids a hydration mismatch.
+ * One chat session. Remounted (via `key`) whenever the user clears the chat,
+ * which is what resets `useChat`'s internal error state — the hook exposes no
+ * setter for it, so a remount is the correct way to drop a stale error banner.
  */
-export function ChatApp() {
-  const [theme, setTheme] = useState<Theme>("dark");
-  const [model, setModel] = useState<string>(DEFAULT_MODEL);
+function ChatSession({
+  model,
+  onModelChange,
+  theme,
+  onToggleTheme,
+  onClear,
+  initialMessages,
+}: ChatSessionProps) {
   const [input, setInput] = useState("");
-
-  // Read once, on mount. `useChat` only consumes initialMessages on first render.
-  const initialMessages = useMemo<AIMessage[]>(() => {
-    return loadHistory().map((m) => ({
-      id: m.id,
-      role: m.role === "assistant" ? "assistant" : "user",
-      content: m.content,
-    }));
-  }, []);
-
   const messagesRef = useRef<AIMessage[]>([]);
 
   const persist = useCallback(() => {
@@ -48,7 +53,7 @@ export function ChatApp() {
     saveHistory(stored);
   }, []);
 
-  const { messages, append, setMessages, isLoading, error, stop } = useChat({
+  const { messages, append, isLoading, error, stop } = useChat({
     api: "/api/chat",
     initialMessages,
     // Sent with every request; the route validates the model server-side.
@@ -68,20 +73,6 @@ export function ChatApp() {
     if (!isLoading) persist();
   }, [messages, isLoading, persist]);
 
-  // Theme: read the saved value on mount, then keep <html> and storage in sync.
-  useEffect(() => {
-    setTheme(loadTheme());
-  }, []);
-
-  useEffect(() => {
-    document.documentElement.setAttribute("data-theme", theme);
-    saveTheme(theme);
-  }, [theme]);
-
-  const toggleTheme = useCallback(() => {
-    setTheme((t) => (t === "dark" ? "light" : "dark"));
-  }, []);
-
   const submit = useCallback(
     (text?: string) => {
       const value = (text ?? input).trim();
@@ -94,18 +85,16 @@ export function ChatApp() {
 
   const handleClear = useCallback(() => {
     if (isLoading) stop();
-    setMessages([]);
-    messagesRef.current = [];
-    clearHistory();
-  }, [isLoading, setMessages, stop]);
+    onClear();
+  }, [isLoading, stop, onClear]);
 
   return (
-    <div className="app">
+    <>
       <Header
         model={model}
-        onModelChange={setModel}
+        onModelChange={onModelChange}
         theme={theme}
-        onToggleTheme={toggleTheme}
+        onToggleTheme={onToggleTheme}
         onClear={handleClear}
         canClear={messages.length > 0}
       />
@@ -123,6 +112,63 @@ export function ChatApp() {
         onSubmit={() => submit()}
         onStop={stop}
         isLoading={isLoading}
+      />
+    </>
+  );
+}
+
+/**
+ * The chat application. Mounted only on the client so the persisted transcript
+ * can be read from localStorage before `useChat` initialises — that keeps
+ * `initialMessages` correct and avoids a hydration mismatch.
+ */
+export function ChatApp() {
+  const [theme, setTheme] = useState<Theme>("dark");
+  const [model, setModel] = useState<string>(DEFAULT_MODEL);
+  const [sessionKey, setSessionKey] = useState(0);
+
+  // Re-read on every new session so a cleared chat starts genuinely empty.
+  // `sessionKey` is the intended trigger, not a stale dependency.
+  const initialMessages = useMemo<AIMessage[]>(
+    () =>
+      loadHistory().map((m) => ({
+        id: m.id,
+        role: m.role === "assistant" ? "assistant" : "user",
+        content: m.content,
+      })),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [sessionKey],
+  );
+
+  // Theme: read the saved value on mount, then keep <html> and storage in sync.
+  useEffect(() => {
+    setTheme(loadTheme());
+  }, []);
+
+  useEffect(() => {
+    document.documentElement.setAttribute("data-theme", theme);
+    saveTheme(theme);
+  }, [theme]);
+
+  const toggleTheme = useCallback(() => {
+    setTheme((t) => (t === "dark" ? "light" : "dark"));
+  }, []);
+
+  const handleClear = useCallback(() => {
+    clearHistory();
+    setSessionKey((k) => k + 1);
+  }, []);
+
+  return (
+    <div className="app">
+      <ChatSession
+        key={sessionKey}
+        model={model}
+        onModelChange={setModel}
+        theme={theme}
+        onToggleTheme={toggleTheme}
+        onClear={handleClear}
+        initialMessages={initialMessages}
       />
     </div>
   );
